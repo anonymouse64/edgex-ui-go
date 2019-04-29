@@ -1,0 +1,91 @@
+name: edgexfoundry-ui-ijohnson
+version: '0.1'
+summary: EdgeX Web management UI
+base: core18
+description: |
+  The EdgeX Web management UI allows for a user to manage their EdgeX instance
+  using a web browser, adding devices, device profiles, as well as visualizing
+  data sent through the export services.
+
+grade: stable
+confinement: strict
+
+apps:
+  edgexfoundry-ui:
+    command: bin/edgex-ui-wrapper.sh
+    daemon: simple
+    plugs:
+      - network
+      - network-bind
+
+parts:
+  # this part really only exists so that the go parts can use this local 
+  # script, but we don't want all the go parts to depend on the config-common
+  # part, as they really don't depend on it
+  # separating this makes quicker iteration when you just need to change the 
+  # config scripts
+  web-static:
+    plugin: dump
+    source: web
+    organize:
+      static: web/static
+      templates: web/templates
+    prime: 
+      - web/*
+  local-snap-assets:
+    plugin: dump
+    source: snap/local/runtime-helpers
+    prime:
+      - bin/*
+  go-build-helper:
+    plugin: dump
+    source: snap/local/build-helpers
+    prime: [-*]
+  go:
+    plugin: nil
+    source: https://go.googlesource.com/go
+    source-type: git
+    source-tag: go1.11.2
+    source-depth: 1
+    build-packages: [golang-go, g++]
+    override-build: |
+      cd src && env GOROOT_BOOTSTRAP=$(go env GOROOT | tr -d '\n') GO111MODULE=off ./make.bash
+      cd ..
+      cp -R bin $SNAPCRAFT_PART_INSTALL
+    stage:
+      - "bin"
+    prime:
+      - "-*"
+    after: [go-build-helper]
+  glide:
+    after:
+      - go
+    plugin: dump
+    source:
+      - on amd64: https://github.com/Masterminds/glide/releases/download/v0.12.3/glide-v0.12.3-linux-amd64.tar.gz
+      - else:
+        - on arm64: https://github.com/Masterminds/glide/releases/download/v0.12.3/glide-v0.12.3-linux-arm64.tar.gz
+        - else:
+          - on armhf: https://github.com/Masterminds/glide/releases/download/v0.12.3/glide-v0.12.3-linux-armv7.tar.gz
+          - else:
+            - on i386: https://github.com/Masterminds/glide/releases/download/v0.12.3/glide-v0.12.3-linux-386.tar.gz
+      - else fail
+    prime:
+      - -*
+    organize:
+      glide: bin/glide
+    stage:
+      - bin/glide
+  edgex-ui-go:
+    after: [glide]
+    source: .
+    plugin: make
+    override-build: |
+      . $SNAPCRAFT_STAGE/bin/go-build-helper.sh
+      gopartbootstrap github.com/edgexfoundry/edgex-ui-go
+
+      glide cc
+      make prepare
+      make build
+      mkdir -p $SNAPCRAFT_PART_INSTALL/cmd/edgex-ui-go
+      cp cmd/edgex-ui-go/edgex-ui-go $SNAPCRAFT_PART_INSTALL/cmd/edgex-ui-go/edgex-ui-go
