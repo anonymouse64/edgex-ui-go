@@ -10,10 +10,17 @@ description: |
 grade: stable
 confinement: strict
 
+architectures:
+  - build-on: armhf
+  - build-on: arm64
+  - build-on: amd64
+  - build-on: i386
+
 apps:
   edgexfoundry-ui:
     command: bin/edgex-ui-wrapper.sh
     daemon: simple
+    restart-condition: always
     plugs:
       - network
       - network-bind
